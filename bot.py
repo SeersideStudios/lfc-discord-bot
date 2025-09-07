@@ -46,7 +46,7 @@ ROLE_NAME_MAP = {
 
 # --- Bot Setup ---
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="+", intents=intents)
+bot = commands.Bot(command_prefix="+", intents=intents, help_command=None)
 
 # --- Logging Helper ---
 async def log_action(member, action, details, color=discord.Color.blue()):
