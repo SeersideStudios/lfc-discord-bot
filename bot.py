@@ -49,6 +49,8 @@ ROLE_NAME_MAP = {
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="+", intents=intents, help_command=None)
 
+# Track launch time for uptime
+bot.launch_time = datetime.utcnow()
 
 # --- Logging Helper ---
 async def log_action(member, action, details, color=discord.Color.blue()):
@@ -65,7 +67,7 @@ def is_staff(ctx):
 def can_ban(ctx):
     return any(role.id in STAFF_ROLE_IDS.values() and role.id != TRIAL_MOD_BAN_EXCLUDED for role in ctx.author.roles)
 
-# --- Message Count Tracking for Trusted Role ---
+# --- Message Count Tracking ---
 MESSAGE_COUNT_FILE = "message_counts.json"
 if os.path.exists(MESSAGE_COUNT_FILE):
     with open(MESSAGE_COUNT_FILE, "r") as f:
@@ -76,10 +78,9 @@ else:
 # --- Events ---
 @bot.event
 async def on_ready():
-    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))  # Guild sync (instant)
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(activity=discord.Game(name="Protecting the BETTER LFC Discord Server"))
-
 
 @bot.event
 async def on_member_join(member):
@@ -142,7 +143,7 @@ async def on_message(message):
     with open(MESSAGE_COUNT_FILE, "w") as f:
         json.dump(message_counts, f)
 
-    # Assign Trusted Role at 5000 messages
+    # Trusted Role at 5000 messages
     if message_counts[user_id] >= 5000:
         trusted_role = message.guild.get_role(TRUSTED_ROLE_ID)
         if trusted_role and trusted_role not in message.author.roles:
@@ -157,54 +158,88 @@ async def on_message(message):
 @bot.command()
 @commands.check(is_staff)
 async def kick(ctx, member: discord.Member, *, reason=None):
-    await member.kick(reason=reason)
-    await log_action(member, "Kick", f"{ctx.author.mention} kicked {member.mention}\nReason: {reason}", color=discord.Color.orange())
-    await ctx.send(f"{member.mention} has been kicked.")
+    try:
+        await member.kick(reason=reason)
+        await log_action(member, "Kick", f"{ctx.author.mention} kicked {member.mention}\nReason: {reason}", color=discord.Color.orange())
+        await ctx.send(f"{member.mention} has been kicked.")
+    except discord.Forbidden:
+        await ctx.send("❌ I don’t have permission to kick this user.")
+    except Exception as e:
+        await ctx.send(f"❌ Kick failed: {e}")
 
 @bot.command()
 @commands.check(can_ban)
 async def ban(ctx, member: discord.Member, *, reason=None):
-    await member.ban(reason=reason)
-    await log_action(member, "Ban", f"{ctx.author.mention} banned {member.mention}\nReason: {reason}", color=discord.Color.red())
-    await ctx.send(f"{member.mention} has been banned.")
+    try:
+        await member.ban(reason=reason)
+        await log_action(member, "Ban", f"{ctx.author.mention} banned {member.mention}\nReason: {reason}", color=discord.Color.red())
+        await ctx.send(f"{member.mention} has been banned.")
+    except discord.Forbidden:
+        await ctx.send("❌ I don’t have permission to ban this user.")
+    except Exception as e:
+        await ctx.send(f"❌ Ban failed: {e}")
 
-@bot.command()
+@bot.command(name="mute")
 @commands.check(is_staff)
-async def timeout(ctx, member: discord.Member, duration: int, *, reason=None):
-    await member.timeout(duration=duration, reason=reason)
-    await log_action(member, "Timeout", f"{ctx.author.mention} timed out {member.mention} for {duration}s\nReason: {reason}")
-    await ctx.send(f"{member.mention} has been timed out for {duration}s.")
+async def mute(ctx, member: discord.Member, duration: int, *, reason=None):
+    try:
+        until = discord.utils.utcnow() + discord.timedelta(seconds=duration)
+        await member.edit(timed_out_until=until, reason=reason)
+        await log_action(member, "Mute", f"{ctx.author.mention} muted {member.mention} for {duration}s\nReason: {reason}", color=discord.Color.orange())
+        await ctx.send(f"{member.mention} has been muted for {duration}s.")
+    except discord.Forbidden:
+        await ctx.send("❌ I don’t have permission to mute this member.")
+    except Exception as e:
+        await ctx.send(f"❌ Mute failed: {e}")
 
 @bot.command()
 @commands.check(is_staff)
 async def purge(ctx, amount: int):
-    deleted = await ctx.channel.purge(limit=amount)
-    await log_action(ctx.author, "Purge", f"{ctx.author.mention} deleted {len(deleted)} messages in {ctx.channel.mention}")
-    await ctx.send(f"Deleted {len(deleted)} messages.", delete_after=5)
+    try:
+        deleted = await ctx.channel.purge(limit=amount)
+        await log_action(ctx.author, "Purge", f"{ctx.author.mention} deleted {len(deleted)} messages in {ctx.channel.mention}")
+        await ctx.send(f"Deleted {len(deleted)} messages.", delete_after=5)
+    except Exception as e:
+        await ctx.send(f"❌ Purge failed: {e}")
 
 @bot.command()
 @commands.check(is_staff)
 async def lock(ctx):
-    await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
-    await log_action(ctx.author, "Channel Locked", f"{ctx.author.mention} locked {ctx.channel.mention}")
-    await ctx.send(f"{ctx.channel.mention} is now locked.")
+    try:
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
+        await log_action(ctx.author, "Channel Locked", f"{ctx.author.mention} locked {ctx.channel.mention}")
+        await ctx.send(f"{ctx.channel.mention} is now locked.")
+    except Exception as e:
+        await ctx.send(f"❌ Lock failed: {e}")
 
 @bot.command()
 @commands.check(is_staff)
 async def unlock(ctx):
-    await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
-    await log_action(ctx.author, "Channel Unlocked", f"{ctx.author.mention} unlocked {ctx.channel.mention}")
-    await ctx.send(f"{ctx.channel.mention} is now unlocked.")
+    try:
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
+        await log_action(ctx.author, "Channel Unlocked", f"{ctx.author.mention} unlocked {ctx.channel.mention}")
+        await ctx.send(f"{ctx.channel.mention} is now unlocked.")
+    except Exception as e:
+        await ctx.send(f"❌ Unlock failed: {e}")
 
-# --- Slash Command ---
-@bot.tree.command(name="ping", description="Check if the bot is alive")
+# --- Slash Command with uptime ---
+@bot.tree.command(name="ping", description="Check bot latency & uptime", guild=discord.Object(id=GUILD_ID))
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("Pong!")
-    
+    latency = round(bot.latency * 1000)
+    uptime = datetime.utcnow() - bot.launch_time
+    days = uptime.days
+    hours, remainder = divmod(uptime.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    await interaction.response.send_message(
+        f"Pong! 🏓\nLatency: `{latency}ms`\nUptime: `{days}d {hours}h {minutes}m {seconds}s`"
+    )
+
 # --- Utility Commands ---
 @bot.command()
 @commands.check(is_staff)
 async def say(ctx, *, message):
+    await ctx.message.delete()
     await ctx.send(message)
 
 @bot.command()
@@ -222,13 +257,12 @@ async def embed(ctx, *, content):
 async def help(ctx):
     embed = discord.Embed(title="LFC Bot Commands & Info", color=discord.Color.green())
     
-    # Moderation Commands
     embed.add_field(
         name="🛡️ Moderation Commands",
         value=(
-            "+kick @user [reason] — Kick a user from the server (Staff only)\n"
+            "+kick @user [reason] — Kick a user (Staff only)\n"
             "+ban @user [reason] — Ban a user (Staff only; Trial Mod cannot ban)\n"
-            "+timeout @user [duration] [reason] — Timeout a user (Staff only)\n"
+            "+mute @user [duration] [reason] — Mute (timeout) a user (Staff only)\n"
             "+purge [number] — Delete messages in a channel (Staff only)\n"
             "+lock — Lock the current channel (Staff only)\n"
             "+unlock — Unlock the current channel (Staff only)"
@@ -236,42 +270,38 @@ async def help(ctx):
         inline=False
     )
 
-    # Utility Commands
     embed.add_field(
         name="📝 Utility Commands",
         value=(
             "+say [message] — Make the bot say something (Staff only)\n"
-            "+embed [title] | [description] — Create an embed message (Staff only)\n"
+            "+embed [title] | [description] — Create an embed (Staff only)\n"
             "+help — Show this commands list"
         ),
         inline=False
     )
 
-    # Roles & Verification Info
     embed.add_field(
         name="👑 Roles & Verification",
         value=(
-            "• **Verified Role:** Automatically given to accounts older than 30 days when they choose a club/league in the prejoin menu.\n"
-            "• **Unverified Role:** Removed automatically when Verified role is assigned.\n"
-            "• **Auto Roles:** Everyone gets the 25/26 season role on join.\n"
-            "• **Club/League Roles:** Assigned automatically from prejoin questions (e.g., PL, Ligue 1, Serie A, etc.) and auto-naming updates nickname to `Name | Club/League`.\n"
-            "• **Trusted Role:** Granted after sending 5000 messages.\n"
-            "• **Account Age Check:** Only accounts older than 30 days are auto-verified; younger accounts remain unverified until manually checked."
+            "• Verified Role: Given to accounts >30 days when they choose a club/league.\n"
+            "• Unverified Role: Removed once verified.\n"
+            "• Auto Roles: Everyone gets the season role on join.\n"
+            "• Club/League Roles: Assigned automatically, nickname becomes `Name | Club/League`.\n"
+            "• Trusted Role: Granted after 5000 messages.\n"
+            "• Account Age Check: <30 days = stays unverified."
         ),
         inline=False
     )
 
-    # Logging
     embed.add_field(
         name="📜 Logging",
         value=(
-            "• Bot logs all moderation actions (kick, ban, timeout, purge, lock/unlock) to the designated log channel.\n"
+            "• Logs all moderation actions (kick, ban, mute, purge, lock/unlock).\n"
             "• Also logs auto-verification, nickname changes, and role assignments.\n"
-            "• Verified logs include account creation date and age for staff to manually verify."
+            "• Verified logs include account creation date and age."
         ),
         inline=False
     )
-
 
     await ctx.send(embed=embed)
 
