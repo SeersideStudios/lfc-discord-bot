@@ -56,7 +56,12 @@ bot.launch_time = datetime.now(timezone.utc)
 async def log_action(member, action, details, color=discord.Color.blue()):
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
     if log_channel:
-        embed = discord.Embed(title=action, description=details, color=color, timestamp=datetime.utcnow())
+        embed = discord.Embed(
+            title=action, 
+            description=details, 
+            color=color, 
+            timestamp=datetime.now(timezone.utc)
+        )
         embed.set_author(name=str(member), icon_url=getattr(member.display_avatar, "url", ""))
         await log_channel.send(embed=embed)
 
@@ -106,7 +111,7 @@ async def on_member_update(before, after):
     new_roles = [role for role in after.roles if role not in before.roles]
     for role in new_roles:
         if role.id in ROLE_NAME_MAP:
-            account_age_days = (datetime.utcnow() - after.created_at.replace(tzinfo=None)).days
+            account_age_days = (datetime.now(timezone.utc) - after.created_at.replace(tzinfo=timezone.utc)).days
             if account_age_days < 30:
                 await log_action(after, "Verification Skipped",
                                  f"{after.mention} received {role.name} role but account is only {account_age_days} days old.",
@@ -162,7 +167,7 @@ async def on_message(message):
 @bot.tree.command(name="ping", description="Check bot latency & uptime", guild=discord.Object(id=GUILD_ID))
 async def ping_slash(interaction: Interaction):
     latency = round(bot.latency * 1000)
-    uptime = datetime.utcnow() - bot.launch_time
+    uptime = datetime.now(timezone.utc) - bot.launch_time
     days = uptime.days
     hours, remainder = divmod(uptime.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
@@ -174,7 +179,7 @@ async def ping_slash(interaction: Interaction):
 @bot.command()
 async def ping(ctx):
     latency = round(bot.latency * 1000)
-    uptime = datetime.utcnow() - bot.launch_time
+    uptime = datetime.now(timezone.utc) - bot.launch_time
     days = uptime.days
     hours, remainder = divmod(uptime.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
@@ -216,14 +221,23 @@ async def timeout_slash(interaction: Interaction, member: Member, duration: str,
         await interaction.response.send_message(":x: You can't timeout yourself!", ephemeral=True)
         return
 
-    if "h" in duration:
-        hours = int(duration.replace("h", ""))
-        delta = timedelta(hours=hours)
-    elif "d" in duration:
-        days = int(duration.replace("d", ""))
-        delta = timedelta(days=days)
+    unit = duration[-1].lower()
+    try:
+        amount = int(duration[:-1])
+    except ValueError:
+        await interaction.response.send_message(":x: Invalid duration format! Use e.g., 30s, 5m, 2h, 7d.", ephemeral=True)
+        return
+
+    if unit == "s":
+        delta = timedelta(seconds=amount)
+    elif unit == "m":
+        delta = timedelta(minutes=amount)
+    elif unit == "h":
+        delta = timedelta(hours=amount)
+    elif unit == "d":
+        delta = timedelta(days=amount)
     else:
-        await interaction.response.send_message(":x: Invalid duration! Use e.g. 7d or 5h.", ephemeral=True)
+        await interaction.response.send_message(":x: Invalid duration unit! Use s, m, h, or d.", ephemeral=True)
         return
 
     try:
@@ -265,15 +279,22 @@ async def unlock_slash(interaction: Interaction):
     except Exception as e:
         await interaction.response.send_message(f"❌ Unlock failed: {e}", ephemeral=True)
 
-# Say
+# Say (Slash)
 @app_commands.command(name='say', description='Make the bot say a message', guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(administrator=True)
 async def say_slash(interaction: Interaction, message: str):
     try:
+        await interaction.response.send_message(":white_check_mark: Message sent!", ephemeral=True)
         await interaction.channel.send(message)
-        await interaction.response.send_message("Message sent!", ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"❌ Failed to send message: {e}", ephemeral=True)
+
+# Say (Prefix)
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def say(ctx, *, message):
+    await ctx.message.delete()  # instantly deletes command
+    await ctx.send(message)
 
 # Embed
 @app_commands.command(name='embed', description='Create an embed', guild=discord.Object(id=GUILD_ID))
