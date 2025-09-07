@@ -76,7 +76,7 @@ else:
 # --- Events ---
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(activity=discord.Game(name="Protecting the BETTER LFC Discord Server"))
 
