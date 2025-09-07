@@ -13,7 +13,7 @@ GUILD_ID = int(os.getenv("GUILD_ID"))
 
 # --- Role & Channel IDs ---
 UNVERIFIED_ROLE_ID = 816809420222234624
-VERIFIED_ROLE_ID = 801939332004839424  # Updated Verified Role ID
+VERIFIED_ROLE_ID = 801939332004839424
 AUTOROLE_ID = 1405803005235953704
 TRUSTED_ROLE_ID = 811019152533356574
 LOG_CHANNEL_ID = 1414135252380553357
@@ -208,23 +208,61 @@ async def embed(ctx, *, content):
     except:
         await ctx.send("Usage: +embed [title] | [description]")
 
+# --- Custom Help Command ---
 @bot.command()
 async def help(ctx):
-    embed = discord.Embed(title="LFC Bot Commands", color=discord.Color.green())
-    embed.add_field(name="🛡️ Moderation",
-                    value="+kick @user [reason]\n+ban @user [reason]\n+timeout @user [duration] [reason]\n+purge [number]\n+lock\n+unlock",
-                    inline=False)
-    embed.add_field(name="📝 Utility",
-                    value="+say [message]\n+embed [title] | [description]\n+help",
-                    inline=False)
-    embed.add_field(name="👑 Roles & Verification",
-                    value="Verified role is given automatically to accounts older than 30 days.\n"
-                          "Trusted role is given after sending 5000 messages.",
-                    inline=False)
-    embed.add_field(name="⚙️ Permissions",
-                    value="All staff roles can use all commands, except Trial Mod cannot ban.\n"
-                          "Only staff roles can use moderation and utility commands.",
-                    inline=False)
+    embed = discord.Embed(title="LFC Bot Commands & Info", color=discord.Color.green())
+    
+    # Moderation Commands
+    embed.add_field(
+        name="🛡️ Moderation Commands",
+        value=(
+            "+kick @user [reason] — Kick a user from the server (Staff only)\n"
+            "+ban @user [reason] — Ban a user (Staff only; Trial Mod cannot ban)\n"
+            "+timeout @user [duration] [reason] — Timeout a user (Staff only)\n"
+            "+purge [number] — Delete messages in a channel (Staff only)\n"
+            "+lock — Lock the current channel (Staff only)\n"
+            "+unlock — Unlock the current channel (Staff only)"
+        ),
+        inline=False
+    )
+
+    # Utility Commands
+    embed.add_field(
+        name="📝 Utility Commands",
+        value=(
+            "+say [message] — Make the bot say something (Staff only)\n"
+            "+embed [title] | [description] — Create an embed message (Staff only)\n"
+            "+help — Show this commands list"
+        ),
+        inline=False
+    )
+
+    # Roles & Verification Info
+    embed.add_field(
+        name="👑 Roles & Verification",
+        value=(
+            "• **Verified Role:** Automatically given to accounts older than 30 days when they choose a club/league in the prejoin menu.\n"
+            "• **Unverified Role:** Removed automatically when Verified role is assigned.\n"
+            "• **Auto Roles:** Everyone gets the 25/26 season role on join.\n"
+            "• **Club/League Roles:** Assigned automatically from prejoin questions (e.g., PL, Ligue 1, Serie A, etc.) and auto-naming updates nickname to `Name | Club/League`.\n"
+            "• **Trusted Role:** Granted after sending 5000 messages.\n"
+            "• **Account Age Check:** Only accounts older than 30 days are auto-verified; younger accounts remain unverified until manually checked."
+        ),
+        inline=False
+    )
+
+    # Logging
+    embed.add_field(
+        name="📜 Logging",
+        value=(
+            "• Bot logs all moderation actions (kick, ban, timeout, purge, lock/unlock) to the designated log channel.\n"
+            "• Also logs auto-verification, nickname changes, and role assignments.\n"
+            "• Verified logs include account creation date and age for staff to manually verify."
+        ),
+        inline=False
+    )
+
     await ctx.send(embed=embed)
 
 # --- Run Bot ---
