@@ -2,11 +2,10 @@ import os
 import discord
 from discord.ext import commands
 from discord.utils import get
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
 from dotenv import load_dotenv
-from discord import app_commands
-from datetime import datetime, timezone
+from discord import app_commands, Interaction, Member
 
 # --- Load .env ---
 load_dotenv()
@@ -79,7 +78,7 @@ else:
 # --- Events ---
 @bot.event
 async def on_ready():
-    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))  # Guild sync (instant)
+    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(activity=discord.Game(name="Protecting the BETTER LFC Discord Server"))
 
@@ -155,117 +154,137 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# --- Moderation Commands ---
-@bot.command()
-@commands.check(is_staff)
-async def kick(ctx, member: discord.Member, *, reason=None):
-    try:
-        await member.kick(reason=reason)
-        await log_action(member, "Kick", f"{ctx.author.mention} kicked {member.mention}\nReason: {reason}", color=discord.Color.orange())
-        await ctx.send(f"{member.mention} has been kicked.")
-    except discord.Forbidden:
-        await ctx.send("❌ I don’t have permission to kick this user.")
-    except Exception as e:
-        await ctx.send(f"❌ Kick failed: {e}")
+# -----------------------------
+# --- Moderation & Utility Slash Commands ---
+# -----------------------------
 
-@bot.command()
-@commands.check(can_ban)
-async def ban(ctx, member: discord.Member, *, reason=None):
-    try:
-        await member.ban(reason=reason)
-        await log_action(member, "Ban", f"{ctx.author.mention} banned {member.mention}\nReason: {reason}", color=discord.Color.red())
-        await ctx.send(f"{member.mention} has been banned.")
-    except discord.Forbidden:
-        await ctx.send("❌ I don’t have permission to ban this user.")
-    except Exception as e:
-        await ctx.send(f"❌ Ban failed: {e}")
-
-@bot.command(name="mute")
-@commands.check(is_staff)
-async def mute(ctx, member: discord.Member, duration: int, *, reason=None):
-    try:
-        until = discord.utils.utcnow() + discord.timedelta(seconds=duration)
-        await member.edit(timed_out_until=until, reason=reason)
-        await log_action(member, "Mute", f"{ctx.author.mention} muted {member.mention} for {duration}s\nReason: {reason}", color=discord.Color.orange())
-        await ctx.send(f"{member.mention} has been muted for {duration}s.")
-    except discord.Forbidden:
-        await ctx.send("❌ I don’t have permission to mute this member.")
-    except Exception as e:
-        await ctx.send(f"❌ Mute failed: {e}")
-
-@bot.command()
-@commands.check(is_staff)
-async def purge(ctx, amount: int):
-    try:
-        # Discord only allows bulk delete for messages <14 days old
-        deleted = await ctx.channel.purge(limit=amount, bulk=True)
-        await log_action(
-            ctx.author, 
-            "Purge", 
-            f"{ctx.author.mention} deleted {len(deleted)} messages in {ctx.channel.mention}"
-        )
-        await ctx.send(f"Deleted {len(deleted)} messages.", delete_after=5)
-    except discord.HTTPException as e:
-        await ctx.send(f"❌ Purge failed: {e}")
-
-@bot.command()
-@commands.check(is_staff)
-async def lock(ctx):
-    try:
-        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
-        await log_action(ctx.author, "Channel Locked", f"{ctx.author.mention} locked {ctx.channel.mention}")
-        await ctx.send(f"{ctx.channel.mention} is now locked.")
-    except Exception as e:
-        await ctx.send(f"❌ Lock failed: {e}")
-
-@bot.command()
-@commands.check(is_staff)
-async def unlock(ctx):
-    try:
-        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
-        await log_action(ctx.author, "Channel Unlocked", f"{ctx.author.mention} unlocked {ctx.channel.mention}")
-        await ctx.send(f"{ctx.channel.mention} is now unlocked.")
-    except Exception as e:
-        await ctx.send(f"❌ Unlock failed: {e}")
-
-# --- Slash Command with uptime ---
+# Ping (Slash)
 @bot.tree.command(name="ping", description="Check bot latency & uptime", guild=discord.Object(id=GUILD_ID))
-async def ping(interaction: discord.Interaction):
+async def ping_slash(interaction: Interaction):
     latency = round(bot.latency * 1000)
     uptime = datetime.utcnow() - bot.launch_time
     days = uptime.days
     hours, remainder = divmod(uptime.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
-
     await interaction.response.send_message(
         f"Pong! 🏓\nLatency: `{latency}ms`\nUptime: `{days}d {hours}h {minutes}m {seconds}s`"
     )
 
-# --- Utility Commands ---
+# Ping (Prefix)
 @bot.command()
-@commands.check(is_staff)
-async def say(ctx, *, message):
-    # Delete the command message instantly
+async def ping(ctx):
+    latency = round(bot.latency * 1000)
+    uptime = datetime.utcnow() - bot.launch_time
+    days = uptime.days
+    hours, remainder = divmod(uptime.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    await ctx.send(
+        f"Pong! 🏓\nLatency: `{latency}ms`\nUptime: `{days}d {hours}h {minutes}m {seconds}s`"
+    )
+
+# Kick
+@app_commands.command(name="kick", description="Kick a user from the server", guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(kick_members=True)
+async def kick_slash(interaction: Interaction, member: Member, reason: str = None):
     try:
-        await ctx.message.delete()
-    except discord.HTTPException:
-        pass  # ignore rate limit or other delete errors
+        await member.kick(reason=reason)
+        await log_action(member, "Kick", f"{interaction.user.mention} kicked {member.mention}\nReason: {reason}", color=discord.Color.orange())
+        await interaction.response.send_message(f"{member.mention} has been kicked.")
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ I don’t have permission to kick this user.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Kick failed: {e}", ephemeral=True)
 
-    # Send the message normally
-    await ctx.send(message)
-
-
-@bot.command()
-@commands.check(is_staff)
-async def embed(ctx, *, content):
+# Ban
+@app_commands.command(name="ban", description="Ban a user from the server", guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(ban_members=True)
+async def ban_slash(interaction: Interaction, member: Member, reason: str = None):
     try:
-        title, description = map(str.strip, content.split("|", 1))
-        embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
-        await ctx.send(embed=embed)
-    except:
-        await ctx.send("Usage: +embed [title] | [description]")
+        await member.ban(reason=reason)
+        await log_action(member, "Ban", f"{interaction.user.mention} banned {member.mention}\nReason: {reason}", color=discord.Color.red())
+        await interaction.response.send_message(f"{member.mention} has been banned.")
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ I don’t have permission to ban this user.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Ban failed: {e}", ephemeral=True)
 
-# --- Custom Help Command ---
+# Timeout
+@app_commands.command(name='timeout', description='Timeout a user for a specific duration', guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(moderate_members=True)
+async def timeout_slash(interaction: Interaction, member: Member, duration: str, reason: str = None):
+    if interaction.user.id == member.id:
+        await interaction.response.send_message(":x: You can't timeout yourself!", ephemeral=True)
+        return
+
+    if "h" in duration:
+        hours = int(duration.replace("h", ""))
+        delta = timedelta(hours=hours)
+    elif "d" in duration:
+        days = int(duration.replace("d", ""))
+        delta = timedelta(days=days)
+    else:
+        await interaction.response.send_message(":x: Invalid duration! Use e.g. 7d or 5h.", ephemeral=True)
+        return
+
+    try:
+        await member.timeout_for(delta, reason=reason)
+        await interaction.response.send_message(f":white_check_mark: {member.mention} has been timed out for {duration}. Reason: {reason}")
+    except discord.Forbidden:
+        await interaction.response.send_message(":x: I don't have permission to timeout this member!", ephemeral=True)
+
+# Purge
+@app_commands.command(name='purge', description='Delete a number of messages', guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(manage_messages=True)
+async def purge_slash(interaction: Interaction, amount: int):
+    try:
+        deleted = await interaction.channel.purge(limit=amount, bulk=True)
+        await log_action(interaction.user, "Purge", f"{interaction.user.mention} deleted {len(deleted)} messages in {interaction.channel.mention}")
+        await interaction.response.send_message(f"Deleted {len(deleted)} messages.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Purge failed: {e}", ephemeral=True)
+
+# Lock
+@app_commands.command(name='lock', description='Lock the current channel', guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(manage_channels=True)
+async def lock_slash(interaction: Interaction):
+    try:
+        await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
+        await log_action(interaction.user, "Channel Locked", f"{interaction.user.mention} locked {interaction.channel.mention}")
+        await interaction.response.send_message(f"{interaction.channel.mention} is now locked.")
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Lock failed: {e}", ephemeral=True)
+
+# Unlock
+@app_commands.command(name='unlock', description='Unlock the current channel', guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(manage_channels=True)
+async def unlock_slash(interaction: Interaction):
+    try:
+        await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
+        await log_action(interaction.user, "Channel Unlocked", f"{interaction.user.mention} unlocked {interaction.channel.mention}")
+        await interaction.response.send_message(f"{interaction.channel.mention} is now unlocked.")
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Unlock failed: {e}", ephemeral=True)
+
+# Say
+@app_commands.command(name='say', description='Make the bot say a message', guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(administrator=True)
+async def say_slash(interaction: Interaction, message: str):
+    try:
+        await interaction.channel.send(message)
+        await interaction.response.send_message("Message sent!", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Failed to send message: {e}", ephemeral=True)
+
+# Embed
+@app_commands.command(name='embed', description='Create an embed', guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(administrator=True)
+async def embed_slash(interaction: Interaction, title: str, description: str):
+    embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
+    await interaction.response.send_message(embed=embed)
+
+# -----------------------------
+# --- Help Command (prefix only) ---
+# -----------------------------
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(title="LFC Bot Commands & Info", color=discord.Color.green())
@@ -275,7 +294,7 @@ async def help(ctx):
         value=(
             "+kick @user [reason] — Kick a user (Staff only)\n"
             "+ban @user [reason] — Ban a user (Staff only; Trial Mod cannot ban)\n"
-            "+mute @user [duration] [reason] — Mute (timeout) a user (Staff only)\n"
+            "+timeout @user [duration] [reason] — Timeout a user (Staff only)\n"
             "+purge [number] — Delete messages in a channel (Staff only)\n"
             "+lock — Lock the current channel (Staff only)\n"
             "+unlock — Unlock the current channel (Staff only)"
@@ -287,7 +306,8 @@ async def help(ctx):
         name="📝 Utility Commands",
         value=(
             "+say [message] — Make the bot say something (Staff only)\n"
-            "+embed [title] | [description] — Create an embed (Staff only)\n"
+            "+embed [title] [description] — Create an embed (Staff only)\n"
+            "+ping — Check bot latency & uptime\n"
             "+help — Show this commands list"
         ),
         inline=False
@@ -309,7 +329,7 @@ async def help(ctx):
     embed.add_field(
         name="📜 Logging",
         value=(
-            "• Logs all moderation actions (kick, ban, mute, purge, lock/unlock).\n"
+            "• Logs all moderation actions (kick, ban, timeout, purge, lock/unlock).\n"
             "• Also logs auto-verification, nickname changes, and role assignments.\n"
             "• Verified logs include account creation date and age."
         ),
