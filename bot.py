@@ -196,10 +196,15 @@ async def mute(ctx, member: discord.Member, duration: int, *, reason=None):
 @commands.check(is_staff)
 async def purge(ctx, amount: int):
     try:
-        deleted = await ctx.channel.purge(limit=amount)
-        await log_action(ctx.author, "Purge", f"{ctx.author.mention} deleted {len(deleted)} messages in {ctx.channel.mention}")
+        # Discord only allows bulk delete for messages <14 days old
+        deleted = await ctx.channel.purge(limit=amount, bulk=True)
+        await log_action(
+            ctx.author, 
+            "Purge", 
+            f"{ctx.author.mention} deleted {len(deleted)} messages in {ctx.channel.mention}"
+        )
         await ctx.send(f"Deleted {len(deleted)} messages.", delete_after=5)
-    except Exception as e:
+    except discord.HTTPException as e:
         await ctx.send(f"❌ Purge failed: {e}")
 
 @bot.command()
@@ -239,8 +244,15 @@ async def ping(interaction: discord.Interaction):
 @bot.command()
 @commands.check(is_staff)
 async def say(ctx, *, message):
-    await ctx.message.delete()
+    # Delete the command message instantly
+    try:
+        await ctx.message.delete()
+    except discord.HTTPException:
+        pass  # ignore rate limit or other delete errors
+
+    # Send the message normally
     await ctx.send(message)
+
 
 @bot.command()
 @commands.check(is_staff)
