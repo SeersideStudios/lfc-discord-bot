@@ -218,4 +218,14 @@ async def help(ctx):
                     value="+say [message]\n+embed [title] | [description]\n+help",
                     inline=False)
     embed.add_field(name="👑 Roles & Verification",
-                    value="Verified role
+                    value="Verified role is given automatically to accounts older than 30 days.\n"
+                          "Trusted role is given after sending 5000 messages.",
+                    inline=False)
+    embed.add_field(name="⚙️ Permissions",
+                    value="All staff roles can use all commands, except Trial Mod cannot ban.\n"
+                          "Only staff roles can use moderation and utility commands.",
+                    inline=False)
+    await ctx.send(embed=embed)
+
+# --- Run Bot ---
+bot.run(TOKEN)
