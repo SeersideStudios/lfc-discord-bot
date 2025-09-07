@@ -5,6 +5,7 @@ from discord.utils import get
 from datetime import datetime
 import json
 from dotenv import load_dotenv
+from discord import app_commands
 
 # --- Load .env ---
 load_dotenv()
@@ -48,6 +49,7 @@ ROLE_NAME_MAP = {
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="+", intents=intents, help_command=None)
 
+
 # --- Logging Helper ---
 async def log_action(member, action, details, color=discord.Color.blue()):
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
@@ -74,8 +76,10 @@ else:
 # --- Events ---
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
-    await bot.change_presence(activity=discord.Game(name="LFC Discord Server"))
+    await bot.change_presence(activity=discord.Game(name="Protecting the BETTER LFC Discord Server"))
+
 
 @bot.event
 async def on_member_join(member):
@@ -192,6 +196,11 @@ async def unlock(ctx):
     await log_action(ctx.author, "Channel Unlocked", f"{ctx.author.mention} unlocked {ctx.channel.mention}")
     await ctx.send(f"{ctx.channel.mention} is now unlocked.")
 
+# --- Slash Command ---
+@bot.tree.command(name="ping", description="Check if the bot is alive")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("Pong!")
+    
 # --- Utility Commands ---
 @bot.command()
 @commands.check(is_staff)
@@ -262,6 +271,7 @@ async def help(ctx):
         ),
         inline=False
     )
+
 
     await ctx.send(embed=embed)
 
