@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 from dotenv import load_dotenv
 from discord import app_commands
+from datetime import datetime, timezone
 
 # --- Load .env ---
 load_dotenv()
@@ -50,7 +51,7 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="+", intents=intents, help_command=None)
 
 # Track launch time for uptime
-bot.launch_time = datetime.utcnow()
+bot.launch_time = datetime.now(timezone.utc)
 
 # --- Logging Helper ---
 async def log_action(member, action, details, color=discord.Color.blue()):
