@@ -5,7 +5,7 @@ from discord.utils import get
 from datetime import datetime, timedelta, timezone
 import json
 from dotenv import load_dotenv
-from discord import app_commands, Interaction, Member
+from discord import app_commands, Interaction
 
 # --- Load .env ---
 load_dotenv()
@@ -48,8 +48,6 @@ ROLE_NAME_MAP = {
 # --- Bot Setup ---
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="+", intents=intents, help_command=None)
-
-# Track launch time for uptime
 bot.launch_time = datetime.now(timezone.utc)
 
 # --- Logging Helper ---
@@ -57,20 +55,13 @@ async def log_action(member, action, details, color=discord.Color.blue()):
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
     if log_channel:
         embed = discord.Embed(
-            title=action, 
-            description=details, 
-            color=color, 
+            title=action,
+            description=details,
+            color=color,
             timestamp=datetime.now(timezone.utc)
         )
         embed.set_author(name=str(member), icon_url=getattr(member.display_avatar, "url", ""))
         await log_channel.send(embed=embed)
-
-# --- Check Staff Permissions ---
-def is_staff(ctx):
-    return any(role.id in STAFF_ROLE_IDS.values() for role in ctx.author.roles)
-
-def can_ban(ctx):
-    return any(role.id in STAFF_ROLE_IDS.values() and role.id != TRIAL_MOD_BAN_EXCLUDED for role in ctx.author.roles)
 
 # --- Message Count Tracking ---
 MESSAGE_COUNT_FILE = "message_counts.json"
@@ -88,7 +79,7 @@ async def on_ready():
     await bot.change_presence(activity=discord.Game(name="Protecting the BETTER LFC Discord Server"))
 
 @bot.event
-async def on_member_join(member):
+async def on_member_join(member: discord.Member):
     guild = member.guild
     unverified_role = guild.get_role(UNVERIFIED_ROLE_ID)
     autorole = guild.get_role(AUTOROLE_ID)
@@ -103,7 +94,7 @@ async def on_member_join(member):
                      color=discord.Color.yellow())
 
 @bot.event
-async def on_member_update(before, after):
+async def on_member_update(before: discord.Member, after: discord.Member):
     guild = after.guild
     unverified_role = guild.get_role(UNVERIFIED_ROLE_ID)
     verified_role = guild.get_role(VERIFIED_ROLE_ID)
@@ -138,7 +129,7 @@ async def on_member_update(before, after):
                              color=discord.Color.green())
 
 @bot.event
-async def on_message(message):
+async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
@@ -163,7 +154,7 @@ async def on_message(message):
 # --- Moderation & Utility Slash Commands ---
 # -----------------------------
 
-# Ping (Slash)
+# Ping
 @bot.tree.command(name="ping", description="Check bot latency & uptime", guild=discord.Object(id=GUILD_ID))
 async def ping_slash(interaction: Interaction):
     latency = round(bot.latency * 1000)
@@ -175,48 +166,32 @@ async def ping_slash(interaction: Interaction):
         f"Pong! 🏓\nLatency: `{latency}ms`\nUptime: `{days}d {hours}h {minutes}m {seconds}s`"
     )
 
-# Ping (Prefix)
-@bot.command()
-async def ping(ctx):
-    latency = round(bot.latency * 1000)
-    uptime = datetime.now(timezone.utc) - bot.launch_time
-    days = uptime.days
-    hours, remainder = divmod(uptime.seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    await ctx.send(
-        f"Pong! 🏓\nLatency: `{latency}ms`\nUptime: `{days}d {hours}h {minutes}m {seconds}s`"
-    )
-
 # Kick
-@app_commands.command(name="kick", description="Kick a user from the server", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="kick", description="Kick a user from the server", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(kick_members=True)
-async def kick_slash(interaction: Interaction, member: Member, reason: str = None):
-    try:
-        await member.kick(reason=reason)
-        await log_action(member, "Kick", f"{interaction.user.mention} kicked {member.mention}\nReason: {reason}", color=discord.Color.orange())
-        await interaction.response.send_message(f"{member.mention} has been kicked.")
-    except discord.Forbidden:
-        await interaction.response.send_message("❌ I don’t have permission to kick this user.", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Kick failed: {e}", ephemeral=True)
+async def kick_slash(interaction: Interaction, member: discord.Member, reason: str = None):
+    if member.top_role >= interaction.user.top_role:
+        await interaction.response.send_message("❌ You cannot kick someone with an equal or higher role.", ephemeral=True)
+        return
+    await member.kick(reason=reason)
+    await log_action(member, "Kick", f"{interaction.user.mention} kicked {member.mention}\nReason: {reason}", color=discord.Color.orange())
+    await interaction.response.send_message(f"{member.mention} has been kicked.")
 
 # Ban
-@app_commands.command(name="ban", description="Ban a user from the server", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="ban", description="Ban a user from the server", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(ban_members=True)
-async def ban_slash(interaction: Interaction, member: Member, reason: str = None):
-    try:
-        await member.ban(reason=reason)
-        await log_action(member, "Ban", f"{interaction.user.mention} banned {member.mention}\nReason: {reason}", color=discord.Color.red())
-        await interaction.response.send_message(f"{member.mention} has been banned.")
-    except discord.Forbidden:
-        await interaction.response.send_message("❌ I don’t have permission to ban this user.", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Ban failed: {e}", ephemeral=True)
+async def ban_slash(interaction: Interaction, member: discord.Member, reason: str = None):
+    if member.top_role >= interaction.user.top_role:
+        await interaction.response.send_message("❌ You cannot ban someone with an equal or higher role.", ephemeral=True)
+        return
+    await member.ban(reason=reason)
+    await log_action(member, "Ban", f"{interaction.user.mention} banned {member.mention}\nReason: {reason}", color=discord.Color.red())
+    await interaction.response.send_message(f"{member.mention} has been banned.")
 
 # Timeout
-@app_commands.command(name='timeout', description='Timeout a user for a specific duration', guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="timeout", description="Timeout a user for a specific duration", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(moderate_members=True)
-async def timeout_slash(interaction: Interaction, member: Member, duration: str, reason: str = None):
+async def timeout_slash(interaction: Interaction, member: discord.Member, duration: str, reason: str = None):
     if interaction.user.id == member.id:
         await interaction.response.send_message(":x: You can't timeout yourself!", ephemeral=True)
         return
@@ -240,124 +215,241 @@ async def timeout_slash(interaction: Interaction, member: Member, duration: str,
         await interaction.response.send_message(":x: Invalid duration unit! Use s, m, h, or d.", ephemeral=True)
         return
 
-    try:
-        await member.timeout_for(delta, reason=reason)
-        await interaction.response.send_message(f":white_check_mark: {member.mention} has been timed out for {duration}. Reason: {reason}")
-    except discord.Forbidden:
-        await interaction.response.send_message(":x: I don't have permission to timeout this member!", ephemeral=True)
+    await member.timeout_for(delta, reason=reason)
+    await log_action(member, "Timeout", f"{interaction.user.mention} timed out {member.mention} for {duration}. Reason: {reason}", color=discord.Color.orange())
+    await interaction.response.send_message(f":white_check_mark: {member.mention} has been timed out for {duration}. Reason: {reason}")
 
 # Purge
-@app_commands.command(name='purge', description='Delete a number of messages', guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="purge", description="Delete a number of messages from the channel", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(manage_messages=True)
 async def purge_slash(interaction: Interaction, amount: int):
-    try:
-        deleted = await interaction.channel.purge(limit=amount, bulk=True)
-        await log_action(interaction.user, "Purge", f"{interaction.user.mention} deleted {len(deleted)} messages in {interaction.channel.mention}")
-        await interaction.response.send_message(f"Deleted {len(deleted)} messages.", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Purge failed: {e}", ephemeral=True)
+    deleted = await interaction.channel.purge(limit=amount)
+    await log_action(interaction.user, "Purge", f"{interaction.user.mention} deleted {len(deleted)} messages in {interaction.channel.mention}")
+    await interaction.response.send_message(f"✅ Deleted {len(deleted)} messages.", ephemeral=True)
 
 # Lock
-@app_commands.command(name='lock', description='Lock the current channel', guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="lock", description="Lock the current channel", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(manage_channels=True)
 async def lock_slash(interaction: Interaction):
-    try:
-        await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
-        await log_action(interaction.user, "Channel Locked", f"{interaction.user.mention} locked {interaction.channel.mention}")
-        await interaction.response.send_message(f"{interaction.channel.mention} is now locked.")
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Lock failed: {e}", ephemeral=True)
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
+    await log_action(interaction.user, "Channel Locked", f"{interaction.user.mention} locked {interaction.channel.mention}")
+    await interaction.response.send_message(f"{interaction.channel.mention} is now locked.")
 
 # Unlock
-@app_commands.command(name='unlock', description='Unlock the current channel', guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="unlock", description="Unlock the current channel", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(manage_channels=True)
 async def unlock_slash(interaction: Interaction):
-    try:
-        await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
-        await log_action(interaction.user, "Channel Unlocked", f"{interaction.user.mention} unlocked {interaction.channel.mention}")
-        await interaction.response.send_message(f"{interaction.channel.mention} is now unlocked.")
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Unlock failed: {e}", ephemeral=True)
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
+    await log_action(interaction.user, "Channel Unlocked", f"{interaction.user.mention} unlocked {interaction.channel.mention}")
+    await interaction.response.send_message(f"{interaction.channel.mention} is now unlocked.")
 
-# Say (Slash)
-@app_commands.command(name='say', description='Make the bot say a message', guild=discord.Object(id=GUILD_ID))
-@app_commands.checks.has_permissions(administrator=True)
+# -----------------------------
+# Utility Commands: SAY & EMBED
+# -----------------------------
+
+# Say
+@bot.tree.command(name="say", description="Make the bot say something", guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(manage_messages=True)
 async def say_slash(interaction: Interaction, message: str):
-    try:
-        await interaction.response.send_message(":white_check_mark: Message sent!", ephemeral=True)
-        await interaction.channel.send(message)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Failed to send message: {e}", ephemeral=True)
-
-# Say (Prefix)
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def say(ctx, *, message):
-    await ctx.message.delete()  # instantly deletes command
-    await ctx.send(message)
+    await interaction.channel.send(message)
+    await log_action(interaction.user, "Say", f"{interaction.user.mention} used /say: {message}")
+    await interaction.response.send_message("✅ Message sent.", ephemeral=True)
 
 # Embed
-@app_commands.command(name='embed', description='Create an embed', guild=discord.Object(id=GUILD_ID))
-@app_commands.checks.has_permissions(administrator=True)
+@bot.tree.command(name="embed", description="Create an embed", guild=discord.Object(id=GUILD_ID))
+@app_commands.checks.has_permissions(manage_messages=True)
 async def embed_slash(interaction: Interaction, title: str, description: str):
     embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
-    await interaction.response.send_message(embed=embed)
+    await interaction.channel.send(embed=embed)
+    await log_action(interaction.user, "Embed", f"{interaction.user.mention} sent an embed titled '{title}'")
+    await interaction.response.send_message("✅ Embed sent.", ephemeral=True)
 
 # -----------------------------
-# --- Help Command (prefix only) ---
+# Help command
 # -----------------------------
-@bot.command()
-async def help(ctx):
-    embed = discord.Embed(title="LFC Bot Commands & Info", color=discord.Color.green())
-    
-    embed.add_field(
-        name="🛡️ Moderation Commands",
-        value=(
-            "+kick @user [reason] — Kick a user (Staff only)\n"
-            "+ban @user [reason] — Ban a user (Staff only; Trial Mod cannot ban)\n"
-            "+timeout @user [duration] [reason] — Timeout a user (Staff only)\n"
-            "+purge [number] — Delete messages in a channel (Staff only)\n"
-            "+lock — Lock the current channel (Staff only)\n"
-            "+unlock — Unlock the current channel (Staff only)"
-        ),
-        inline=False
+@bot.tree.command(name="help", description="Show all available commands", guild=discord.Object(id=GUILD_ID))
+async def help_slash(interaction: Interaction):
+    embed = discord.Embed(
+        title="LFC Bot Commands & Info",
+        color=discord.Color.blue(),
+        description="🛡️ Moderation & 📝 Utility Commands\nUse responsibly!"
     )
+    embed.add_field(name="Moderation Commands", value=(
+        "/kick <member> [reason]\n"
+        "/ban <member> [reason]\n"
+        "/timeout <member> <duration> [reason]\n"
+        "/purge <amount>\n"
+        "/lock\n"
+        "/unlock"
+    ), inline=False)
+    embed.add_field(name="Utility Commands", value=(
+        "/say <message>\n"
+        "/embed <title> <description>\n"
+        "/help"
+    ), inline=False)
+    embed.add_field(name="Roles & Verification", value=(
+        "• Verified Role: Accounts >30 days when they choose a club/league.\n"
+        "• Unverified Role: Removed once verified.\n"
+        "• Auto Roles: Everyone gets the season role on join.\n"
+        "• Club/League Roles: Assigned automatically, nickname becomes Name | Club/League.\n"
+        "• Trusted Role: Granted after 5000 messages.\n"
+        "• Account Age Check: <30 days = stays unverified."
+    ), inline=False)
+    embed.add_field(name="Logging", value=(
+        "• Logs all moderation actions (kick, ban, mute, purge, lock/unlock).\n"
+        "• Also logs auto-verification, nickname changes, and role assignments.\n"
+        "• Verified logs include account creation date and age."
+    ), inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    embed.add_field(
-        name="📝 Utility Commands",
-        value=(
-            "+say [message] — Make the bot say something (Staff only)\n"
-            "+embed [title] [description] — Create an embed (Staff only)\n"
-            "+ping — Check bot latency & uptime\n"
-            "+help — Show this commands list"
-        ),
-        inline=False
+# -----------------------------
+# Error handling for slash commands
+# -----------------------------
+@kick_slash.error
+@ban_slash.error
+@timeout_slash.error
+@purge_slash.error
+@lock_slash.error
+@unlock_slash.error
+@say_slash.error
+@embed_slash.error
+async def slash_command_error(interaction: Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+    elif isinstance(error, app_commands.MissingRequiredArgument):
+        await interaction.response.send_message("❌ Missing required argument.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ An error occurred: {error}", ephemeral=True)
+
+# -----------------------------
+# Prefix ping command (optional)
+# -----------------------------
+@bot.command(name="ping")
+async def ping_prefix(ctx):
+    latency = round(bot.latency * 1000)
+    uptime = datetime.now(timezone.utc) - bot.launch_time
+    days = uptime.days
+    hours, remainder = divmod(uptime.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    await ctx.send(f"Pong! 🏓\nLatency: `{latency}ms`\nUptime: `{days}d {hours}h {minutes}m {seconds}s`")
+
+# --- Prefix Commands (matching all slash commands) ---
+
+# Kick
+@bot.command(name="kick")
+@commands.has_permissions(kick_members=True)
+async def kick_prefix(ctx, member: discord.Member, *, reason: str = None):
+    if member.top_role >= ctx.author.top_role:
+        await ctx.send("❌ You cannot kick someone with an equal or higher role.")
+        return
+    await member.kick(reason=reason)
+    await log_action(member, "Kick", f"{ctx.author.mention} kicked {member.mention}\nReason: {reason}", color=discord.Color.orange())
+    await ctx.send(f"{member.mention} has been kicked.")
+
+# Ban
+@bot.command(name="ban")
+@commands.has_permissions(ban_members=True)
+async def ban_prefix(ctx, member: discord.Member, *, reason: str = None):
+    if member.top_role >= ctx.author.top_role:
+        await ctx.send("❌ You cannot ban someone with an equal or higher role.")
+        return
+    await member.ban(reason=reason)
+    await log_action(member, "Ban", f"{ctx.author.mention} banned {member.mention}\nReason: {reason}", color=discord.Color.red())
+    await ctx.send(f"{member.mention} has been banned.")
+
+# Timeout / Mute
+@bot.command(name="timeout")
+@commands.has_permissions(moderate_members=True)
+async def timeout_prefix(ctx, member: discord.Member, duration: str, *, reason: str = None):
+    if ctx.author.id == member.id:
+        await ctx.send("❌ You can't timeout yourself!")
+        return
+
+    unit = duration[-1].lower()
+    try:
+        amount = int(duration[:-1])
+    except ValueError:
+        await ctx.send(":x: Invalid duration format! Use e.g., 30s, 5m, 2h, 7d.")
+        return
+
+    if unit == "s":
+        delta = timedelta(seconds=amount)
+    elif unit == "m":
+        delta = timedelta(minutes=amount)
+    elif unit == "h":
+        delta = timedelta(hours=amount)
+    elif unit == "d":
+        delta = timedelta(days=amount)
+    else:
+        await ctx.send(":x: Invalid duration unit! Use s, m, h, or d.")
+        return
+
+    await member.timeout_for(delta, reason=reason)
+    await log_action(member, "Timeout", f"{ctx.author.mention} timed out {member.mention} for {duration}. Reason: {reason}", color=discord.Color.orange())
+    await ctx.send(f":white_check_mark: {member.mention} has been timed out for {duration}. Reason: {reason}")
+
+# Purge
+@bot.command(name="purge")
+@commands.has_permissions(manage_messages=True)
+async def purge_prefix(ctx, amount: int):
+    deleted = await ctx.channel.purge(limit=amount)
+    await log_action(ctx.author, "Purge", f"{ctx.author.mention} deleted {len(deleted)} messages in {ctx.channel.mention}")
+    await ctx.send(f"✅ Deleted {len(deleted)} messages.", delete_after=5)
+
+# Lock
+@bot.command(name="lock")
+@commands.has_permissions(manage_channels=True)
+async def lock_prefix(ctx):
+    await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
+    await log_action(ctx.author, "Channel Locked", f"{ctx.author.mention} locked {ctx.channel.mention}")
+    await ctx.send(f"{ctx.channel.mention} is now locked.")
+
+# Unlock
+@bot.command(name="unlock")
+@commands.has_permissions(manage_channels=True)
+async def unlock_prefix(ctx):
+    await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
+    await log_action(ctx.author, "Channel Unlocked", f"{ctx.author.mention} unlocked {ctx.channel.mention}")
+    await ctx.send(f"{ctx.channel.mention} is now unlocked.")
+
+# Say
+@bot.command(name="say")
+@commands.has_permissions(manage_messages=True)
+async def say_prefix(ctx, *, message: str):
+    await ctx.send(message)
+    await log_action(ctx.author, "Say", f"{ctx.author.mention} used +say: {message}")
+
+# Embed
+@bot.command(name="embed")
+@commands.has_permissions(manage_messages=True)
+async def embed_prefix(ctx, title: str, *, description: str):
+    embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
+    await ctx.send(embed=embed)
+    await log_action(ctx.author, "Embed", f"{ctx.author.mention} sent an embed titled '{title}'")
+
+# Help
+@bot.command(name="help")
+async def help_prefix(ctx):
+    embed = discord.Embed(
+        title="LFC Bot Commands & Info",
+        color=discord.Color.blue(),
+        description="🛡️ Moderation & 📝 Utility Commands\nUse responsibly!"
     )
-
-    embed.add_field(
-        name="👑 Roles & Verification",
-        value=(
-            "• Verified Role: Given to accounts >30 days when they choose a club/league.\n"
-            "• Unverified Role: Removed once verified.\n"
-            "• Auto Roles: Everyone gets the season role on join.\n"
-            "• Club/League Roles: Assigned automatically, nickname becomes `Name | Club/League`.\n"
-            "• Trusted Role: Granted after 5000 messages.\n"
-            "• Account Age Check: <30 days = stays unverified."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="📜 Logging",
-        value=(
-            "• Logs all moderation actions (kick, ban, timeout, purge, lock/unlock).\n"
-            "• Also logs auto-verification, nickname changes, and role assignments.\n"
-            "• Verified logs include account creation date and age."
-        ),
-        inline=False
-    )
-
+    embed.add_field(name="Moderation Commands", value=(
+        "+kick <member> [reason]\n"
+        "+ban <member> [reason]\n"
+        "+timeout <member> <duration> [reason]\n"
+        "+purge <amount>\n"
+        "+lock\n"
+        "+unlock"
+    ), inline=False)
+    embed.add_field(name="Utility Commands", value=(
+        "+say <message>\n"
+        "+embed <title> <description>\n"
+        "+help"
+    ), inline=False)
     await ctx.send(embed=embed)
 
-# --- Run Bot ---
+
+# Run bot
 bot.run(TOKEN)
