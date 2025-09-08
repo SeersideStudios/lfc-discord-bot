@@ -40,10 +40,12 @@ ROLE_NAME_MAP = {
     1414130805621522472: "PL",
     802687773672472656: "Manc",
     812773738696278047: "Everton",
+    802685719700963350: "Liverpool",  
     805526606004486144: "Neutral",
     805526893524418601: "Londoner",
     804336116760707072: "Other Club"
 }
+
 
 # --- Bot Setup ---
 intents = discord.Intents.all()
